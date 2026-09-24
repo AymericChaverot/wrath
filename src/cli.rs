@@ -11,6 +11,10 @@ pub struct Cli {
     /// The target to kill: a port number or a process name.
     #[arg(required = true)]
     pub target: String,
+
+    /// Skip the confirmation prompt (details are still displayed).
+    #[arg(short, long)]
+    pub yes: bool,
 }
 
 /// Represents the parsed target from the user input.
@@ -106,9 +110,23 @@ mod tests {
     fn test_cli_debug() {
         let cli = Cli {
             target: "3000".to_string(),
+            yes: false,
         };
         let debug_str = format!("{cli:?}");
         assert!(debug_str.contains("3000"));
+    }
+
+    #[test]
+    fn test_cli_yes_flag() {
+        let short = Cli::try_parse_from(["wrath", "-y", "node"]).expect("valid args");
+        assert!(short.yes);
+        assert_eq!(short.target, "node");
+
+        let long = Cli::try_parse_from(["wrath", "3000", "--yes"]).expect("valid args");
+        assert!(long.yes);
+
+        let none = Cli::try_parse_from(["wrath", "node"]).expect("valid args");
+        assert!(!none.yes);
     }
 
     #[test]

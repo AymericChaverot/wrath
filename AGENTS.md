@@ -16,7 +16,8 @@ User uses the command `wrath 3000` to kill the process that is using port 3000.
 Wrath CLI is able to recognize the user's intent to kill the process using the port 3000.
 It then kills the process using the port 3000 and all of its children.
 It then prints the following message:
-`[🔥] Wrath unleashed: Process '<process_name>' (n process(es)) using port 3000 has been obliterated.`
+`Wrath unleashed: Process '<process_name>' (n process(es)) using port 3000 has been obliterated.`
+next to the flame (see "Output style").
 
 ### User story 2
 
@@ -29,7 +30,24 @@ User uses the command `wrath <process_name>` to kill the process for any reason 
 Wrath CLI is able to recognize the user's intent to kill the process named <process_name>.
 It then kills the process <process_name> and all of its children.
 It then prints the following message:
-`[🔥] Wrath unleashed: Process '<process_name>' (n process(es)) has been obliterated.`
+`Wrath unleashed: Process '<process_name>' (n process(es)) has been obliterated.`
+next to the flame (see "Output style").
+
+## Output style
+
+- No emojis: only ASCII or plain Unicode characters.
+- Line markers: `[>]` found, `[?]` question, `[!]` warning, `[x]` error, `[-]` aborted, `[i]` info.
+- The final message is printed next to a Unicode block flame modeled on the fire emoji
+  (drawing in `FLAME`, colors painted by hand in `FLAME_COLORS` in `src/ui.rs`:
+  `R` red, `O` orange, `Y` yellow core drawn on an orange background):
+
+```
+    ▙
+  ▟▖▟█▖
+ ▟█████
+▐██▗▖██▌   Wrath unleashed: Process 'node' (3 processes)
+ ▀███▛▘    using port 3000 has been obliterated.
+```
 
 ## Code standards
 

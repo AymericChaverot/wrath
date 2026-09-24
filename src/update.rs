@@ -1,3 +1,7 @@
+use std::sync::mpsc::{self, Receiver};
+use std::thread;
+use std::time::{Duration, Instant};
+
 use serde::Deserialize;
 
 /// The GitHub repository for version checks.
@@ -10,6 +14,38 @@ const GITHUB_API_URL: &str = "https://api.github.com/repos";
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
     tag_name: String,
+}
+
+/// Hard limit for the HTTP request, so the background thread never lingers.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// An update check running in a background thread.
+pub struct BackgroundCheck {
+    receiver: Receiver<Option<String>>,
+    started: Instant,
+}
+
+impl BackgroundCheck {
+    /// Start checking for updates without blocking the caller.
+    pub fn spawn(current_version: &'static str) -> Self {
+        let (sender, receiver) = mpsc::channel();
+        thread::spawn(move || {
+            // The receiver may be gone if wrath already finished: nothing to do then.
+            let _ = sender.send(check_for_update(current_version));
+        });
+
+        Self {
+            receiver,
+            started: Instant::now(),
+        }
+    }
+
+    /// Get the newer version, if any, waiting at most until `budget`
+    /// has elapsed since the check started. Never blocks longer than that.
+    pub fn result(self, budget: Duration) -> Option<String> {
+        let remaining = budget.saturating_sub(self.started.elapsed());
+        self.receiver.recv_timeout(remaining).ok().flatten()
+    }
 }
 
 /// Check if a newer version of wrath is available on GitHub.
@@ -32,7 +68,13 @@ pub fn check_for_update(current_version: &str) -> Option<String> {
 fn fetch_latest_version() -> Result<String, String> {
     let url = format!("{GITHUB_API_URL}/{GITHUB_REPO}/releases/latest");
 
-    let mut response = ureq::get(&url)
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_global(Some(REQUEST_TIMEOUT))
+        .build()
+        .into();
+
+    let mut response = agent
+        .get(&url)
         .header("User-Agent", "wrath-cli")
         .header("Accept", "application/vnd.github.v3+json")
         .call()
@@ -148,6 +190,25 @@ mod tests {
         // "1.abc" parses as [1], "0.1" parses as [0, 1]
         // Comparing: 1 > 0, so latest is newer
         assert!(is_newer("1.abc", "0.1"));
+    }
+
+    #[test]
+    fn test_background_check_zero_budget_does_not_block() {
+        let check = BackgroundCheck::spawn("0.1.0");
+        let started = Instant::now();
+        let _ = check.result(Duration::ZERO);
+        assert!(started.elapsed() < Duration::from_millis(500));
+    }
+
+    #[test]
+    fn test_background_check_receives_result() {
+        let (sender, receiver) = mpsc::channel();
+        sender.send(Some("9.9.9".to_string())).expect("send");
+        let check = BackgroundCheck {
+            receiver,
+            started: Instant::now(),
+        };
+        assert_eq!(check.result(Duration::from_secs(1)), Some("9.9.9".into()));
     }
 
     #[test]

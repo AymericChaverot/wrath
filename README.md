@@ -67,7 +67,7 @@ The install scripts automatically add the binary to your `PATH`. On Windows, res
 
 Run the install script again — it always fetches the latest release and overwrites the existing binary.
 
-Wrath also checks for updates automatically after each run. If a newer version is available, you'll see a notification:
+Wrath also checks for updates automatically, in the background while it works (it never slows the command down). If a newer version is available, you'll see a notification at the end of the output:
 
 ```
 [i] Update available: 0.1.0 -> 0.2.0
@@ -78,10 +78,18 @@ Wrath also checks for updates automatically after each run. If a newer version i
 ## Usage
 
 ```
-wrath <target>
+wrath [-y] <target>
 ```
 
 The target is either a **port number** or a **process name**. Wrath figures out which one you mean.
+
+Before killing anything, Wrath shows what it found (runtime such as Java, Node.js, Python, .NET…, the script/jar/module being run, command line, path, working directory, user, memory, uptime and children) and asks for confirmation.
+
+| Option | Description |
+|--------|-------------|
+| `-y`, `--yes` | Skip the confirmation. The details are still printed, so you know what was killed. |
+
+Without `--yes`, Wrath refuses to kill anything when it is not run from an interactive terminal (scripts, pipes, CI).
 
 ### Kill a process by port
 
@@ -90,7 +98,23 @@ wrath 3000
 ```
 
 ```
-[🔥] Wrath unleashed: Process 'node' (3 processes) using port 3000 has been obliterated.
+[>] Port 3000 is held by:
+
+  ● node.exe  Node.js  PID 12345
+    Script     C:\app\node_modules\vite\bin\vite.js (vite)
+    Command    node C:\app\node_modules\vite\bin\vite.js --port 3000
+    Path       C:\Program Files\nodejs\node.exe
+    Directory  C:\app
+    User       aymer
+    Memory     84.2 MB   Uptime 2h 13m
+    Children   2 (esbuild.exe ×2)
+
+[?] Obliterate 3 processes? [y/N] y
+    ▙
+  ▟▖▟█▖
+ ▟█████
+▐██▗▖██▌   Wrath unleashed: Process 'node.exe' (3 processes)
+ ▀███▛▘    using port 3000 has been obliterated.
 ```
 
 Finds the process listening on port 3000, kills it and all of its child processes.
@@ -102,10 +126,14 @@ wrath node
 ```
 
 ```
-[🔥] Wrath unleashed: Process 'node' (2 processes) has been obliterated.
+    ▙
+  ▟▖▟█▖
+ ▟█████
+▐██▗▖██▌   Wrath unleashed: Process 'node' (2 processes)
+ ▀███▛▘    has been obliterated.
 ```
 
-Finds every process matching the name, kills each one along with their child processes.
+Finds every process matching the name (case-insensitive, `.exe` optional), shows one card per match, asks once, then kills each one along with their child processes. Wrath never targets itself.
 
 ### Version
 
@@ -116,21 +144,26 @@ wrath --version
 ## How It Works
 
 ```
-wrath <target>
+wrath [-y] <target>
   │
+  ├─ Start update check in the background
   ├─ Is target a number (1-65535)?
-  │   ├─ Yes → Resolve port to PID → Kill process + children
-  │   └─ No  → Search processes by name → Kill matches + children
+  │   ├─ Yes → Resolve port to PID
+  │   └─ No  → Search processes by name
+  ├─ Describe matches + children → Confirm (unless -y)
+  ├─ Kill process(es) + children
   │
-  └─ Output result → Check for updates
+  └─ Output result → Show update notice (if ready)
 ```
 
 1. **Argument parsing** — `clap` handles CLI input and validation.
 2. **Target detection** — Automatically distinguishes ports from process names.
 3. **Port resolution** — Uses `netstat` (Windows) or `lsof` (Unix) to map ports to PIDs.
 4. **Process discovery** — `sysinfo` provides cross-platform process enumeration.
-5. **Recursive kill** — Kills the target and all descendant processes.
-6. **Update check** — Queries GitHub Releases API for the latest version.
+5. **Inspection** — Detects the runtime and entry point from the executable name and command line.
+6. **Confirmation** — Asks `[y/N]`, bypassed with `--yes`.
+7. **Recursive kill** — Kills the targets first, then all their descendants.
+8. **Update check** — Queries GitHub Releases API in a background thread; the result is shown at the end, waiting at most 1.5 s after startup.
 
 ## Platform Support
 
@@ -208,9 +241,11 @@ src/
 ├── main.rs      Entry point — wires CLI to business logic
 ├── cli.rs       Argument parsing and target detection
 ├── error.rs     Domain error types
+├── inspect.rs   Runtime / entry point detection and process details
 ├── port.rs      Port-to-PID resolution (platform-aware)
 ├── process.rs   Process discovery, child collection, and termination
-└── update.rs    Auto-update version check via GitHub API
+├── ui.rs        Terminal rendering (colors, cards) and confirmation prompt
+└── update.rs    Background update check via GitHub API
 
 scripts/
 ├── install.sh   Installer for macOS and Linux
@@ -225,6 +260,7 @@ Each module has a single responsibility. No unsafe code.
 |-------|---------|
 | [`clap`](https://crates.io/crates/clap) | Command-line argument parsing |
 | [`sysinfo`](https://crates.io/crates/sysinfo) | Cross-platform process management |
+| [`anstyle`](https://crates.io/crates/anstyle) / [`anstream`](https://crates.io/crates/anstream) | Terminal colors, stripped automatically when unsupported or with `NO_COLOR` |
 | [`ureq`](https://crates.io/crates/ureq) | HTTP client for update checks |
 | [`serde`](https://crates.io/crates/serde) / [`serde_json`](https://crates.io/crates/serde_json) | JSON deserialization for GitHub API |
 

@@ -11,6 +11,10 @@ pub enum WrathError {
     PortResolutionFailed(u16, String),
     /// Failed to kill a process.
     KillFailed(String),
+    /// Confirmation is needed but stdin is not an interactive terminal.
+    ConfirmationRequired,
+    /// The user declined the confirmation.
+    Aborted,
 }
 
 impl fmt::Display for WrathError {
@@ -28,6 +32,10 @@ impl fmt::Display for WrathError {
             WrathError::KillFailed(reason) => {
                 write!(f, "Failed to kill process: {reason}")
             }
+            WrathError::ConfirmationRequired => {
+                write!(f, "Not an interactive terminal, use --yes to confirm")
+            }
+            WrathError::Aborted => write!(f, "Aborted, nothing was killed"),
         }
     }
 }
@@ -60,6 +68,18 @@ mod tests {
     fn test_kill_failed_display() {
         let err = WrathError::KillFailed("permission denied".to_string());
         assert_eq!(err.to_string(), "Failed to kill process: permission denied");
+    }
+
+    #[test]
+    fn test_confirmation_errors_display() {
+        assert_eq!(
+            WrathError::ConfirmationRequired.to_string(),
+            "Not an interactive terminal, use --yes to confirm"
+        );
+        assert_eq!(
+            WrathError::Aborted.to_string(),
+            "Aborted, nothing was killed"
+        );
     }
 
     #[test]
